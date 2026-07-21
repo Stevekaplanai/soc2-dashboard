@@ -20,10 +20,8 @@ interface GroupedData {
 }
 
 export function DashboardClient({
-  controls: _controls,
   grouped,
 }: {
-  controls: ControlStatusRow[];
   grouped: GroupedData[];
 }) {
   const [expanded, setExpanded] = useState<Set<ControlCategory>>(
@@ -44,7 +42,7 @@ export function DashboardClient({
     <>
       <div className="space-y-6">
         {grouped.map(({ category, controls }) => (
-          <div key={category} className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
+          <section key={category} className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
             <button
               onClick={() => toggle(category)}
               className="flex w-full items-center justify-between bg-neutral-50 px-4 py-3 text-left hover:bg-neutral-100"
@@ -69,17 +67,17 @@ export function DashboardClient({
                 {controls.map((control) => (
                   <div
                     key={control.control_id}
-                    className="flex items-center justify-between px-4 py-3 hover:bg-neutral-50"
+                    className="flex flex-col gap-3 px-4 py-3 hover:bg-neutral-50 sm:flex-row sm:items-center sm:justify-between"
                   >
-                    <div className="flex items-center gap-4">
+                    <div className="flex min-w-0 items-start gap-3 sm:items-center sm:gap-4">
                       <Badge
                         variant={STATUS_VARIANT[control.status]}
                         className="w-24 justify-center"
                       >
                         {STATUS_LABEL[control.status]}
                       </Badge>
-                      <div>
-                        <div className="flex items-center gap-2">
+                      <div className="min-w-0">
+                        <div className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-2">
                           <span className="font-mono text-sm font-medium text-neutral-900">
                             {control.code}
                           </span>
@@ -98,6 +96,7 @@ export function DashboardClient({
                       variant="outline"
                       size="sm"
                       onClick={() => setUploadControl(control)}
+                      className="w-full sm:w-auto"
                     >
                       <Plus className="h-3 w-3" /> Add Evidence
                     </Button>
@@ -105,7 +104,7 @@ export function DashboardClient({
                 ))}
               </div>
             )}
-          </div>
+          </section>
         ))}
       </div>
 

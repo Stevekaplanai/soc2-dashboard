@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { uploadEvidenceAction } from "@/lib/actions";
 import { FileUp, Loader2 } from "lucide-react";
 import type { ControlStatusRow } from "@/lib/types";
+import { useRouter } from "next/navigation";
 
 const MAX_SIZE = 10 * 1024 * 1024; // 10MB
 const ACCEPTED_TYPES = [".pdf", ".png", ".jpg", ".jpeg", ".docx"];
@@ -15,6 +16,7 @@ interface UploadEvidenceProps {
 }
 
 export function UploadEvidence({ control, onSuccess }: UploadEvidenceProps) {
+  const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,8 +61,9 @@ export function UploadEvidence({ control, onSuccess }: UploadEvidenceProps) {
         setError(result.error);
       } else {
         onSuccess();
+        router.refresh();
       }
-    } catch (err) {
+    } catch {
       setError("Upload failed. Please try again.");
     } finally {
       setUploading(false);
@@ -72,6 +75,9 @@ export function UploadEvidence({ control, onSuccess }: UploadEvidenceProps) {
       <div className="rounded-md bg-neutral-50 p-4">
         <p className="text-sm text-neutral-600">{control.title}</p>
         <p className="mt-1 text-xs text-neutral-400">{control.code} · {control.category}</p>
+        <p className="mt-3 text-sm leading-6 text-neutral-600">
+          {control.description}
+        </p>
       </div>
 
       <div>

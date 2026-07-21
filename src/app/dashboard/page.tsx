@@ -2,26 +2,47 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { DashboardClient } from "@/components/dashboard-client";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import {
-  CATEGORY_LABELS,
   type ControlStatusRow,
   type ControlCategory,
 } from "@/lib/types";
 import { ShieldCheck, LogOut, Settings, ArrowLeft } from "lucide-react";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
 async function getControls() {
   const supabase = await createClient();
-  if (!supabase) return [];
+  if (!supabase) return { controls: [] as ControlStatusRow[], isAdmin: false };
 
-  const { data } = await supabase.from("control_status").select("*");
-  return (data as ControlStatusRow[]) || [];
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/auth/login?redirect=/dashboard");
+
+  const [statusResult, controlsResult] = await Promise.all([
+    supabase.from("control_status").select("*").order("code"),
+    supabase.from("controls").select("id, description"),
+  ]);
+  if (statusResult.error) {
+    throw new Error(`Unable to load controls: ${statusResult.error.message}`);
+  }
+  if (controlsResult.error) {
+    throw new Error(`Unable to load control descriptions: ${controlsResult.error.message}`);
+  }
+
+  const descriptions = new Map(
+    (controlsResult.data ?? []).map((control) => [control.id, control.description])
+  );
+  const controls = (statusResult.data ?? []).map((control) => ({
+    ...(control as Omit<ControlStatusRow, "description">),
+    description: descriptions.get(control.control_id) ?? "",
+  }));
+  return { controls, isAdmin: user.app_metadata?.role === "admin" };
 }
 
 export default async function DashboardPage() {
-  const controls = await getControls();
+  const { controls, isAdmin } = await getControls();
 
   const total = controls.length;
   const passing = controls.filter((c) => c.status === "passing").length;
@@ -42,8 +63,8 @@ export default async function DashboardPage() {
     <div className="min-h-screen bg-neutral-50">
       {/* Top bar */}
       <header className="border-b border-neutral-200 bg-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
-          <div className="flex items-center gap-4">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
+          <div className="flex items-center gap-3 sm:gap-4">
             <Link
               href="/"
               className="flex items-center gap-1.5 text-sm text-neutral-600 hover:text-neutral-900"
@@ -52,16 +73,18 @@ export default async function DashboardPage() {
             </Link>
             <div className="flex items-center gap-2">
               <ShieldCheck className="h-5 w-5 text-neutral-900" />
-              <span className="font-semibold">SOC2 Dashboard</span>
+              <span className="hidden font-semibold sm:inline">SOC2 Dashboard</span>
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <Link
-              href="/dashboard/review"
-              className="flex items-center gap-1.5 text-sm text-neutral-600 hover:text-neutral-900"
-            >
-              <Settings className="h-4 w-4" /> Review Queue
-            </Link>
+            {isAdmin && (
+              <Link
+                href="/dashboard/review"
+                className="flex items-center gap-1.5 text-sm text-neutral-600 hover:text-neutral-900"
+              >
+                <Settings className="h-4 w-4" /> Review Queue
+              </Link>
+            )}
             <form action="/auth/signout" method="post">
               <button
                 type="submit"
@@ -74,7 +97,7 @@ export default async function DashboardPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-6 py-8">
+      <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
         {/* Summary strip */}
         <div className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
           <Card>
@@ -117,7 +140,7 @@ export default async function DashboardPage() {
             </CardContent>
           </Card>
         ) : (
-          <DashboardClient controls={controls} grouped={grouped} />
+          <DashboardClient grouped={grouped} />
         )}
       </main>
     </div>

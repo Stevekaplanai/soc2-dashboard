@@ -3,12 +3,12 @@
 -- ============================================================================
 -- Real SOC2 Trust Services Criteria (TSC) from the AICPA 2017 framework.
 -- Run this AFTER the migration file (0001_soc2_dashboard.sql).
--- 69 controls across 5 categories: CC, A, PI, C, P
+-- 71 controls across 5 categories: CC, A, PI, C, P
 -- ============================================================================
 
-INSERT INTO soc2_controls (code, title, category, description) VALUES
+INSERT INTO controls (code, title, category, description) VALUES
 -- ============================================================================
--- CC — Common Criteria (Security) — 64 controls
+-- CC — Common Criteria (Security) — 34 controls
 -- ============================================================================
 -- CC1: Control Environment
 ('CC1.1', 'Control Environment', 'CC', 'The entity demonstrates commitment to integrity and ethical values.'),
@@ -110,6 +110,6 @@ ON CONFLICT (code) DO NOTHING;
 
 -- Verify the seed
 SELECT category, count(*) as control_count
-FROM soc2_controls
+FROM controls
 GROUP BY category
 ORDER BY category;

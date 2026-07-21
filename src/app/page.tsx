@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ShieldCheck, FileText, Brain, CheckCircle2, ArrowRight, Github } from "lucide-react";
+import type { ControlStatus } from "@/lib/types";
 
 async function getComplianceStats() {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   if (!supabase) {
     return { total: 0, passing: 0, in_review: 0, not_started: 0, percentage: 0, hasData: false };
   }
@@ -13,16 +14,19 @@ async function getComplianceStats() {
   try {
     const { data, error } = await supabase
       .from("control_status")
-      .select("*");
+      .select("status");
 
     if (error || !data) {
       return { total: 0, passing: 0, in_review: 0, not_started: 0, percentage: 0, hasData: false };
     }
 
-    const total = data.length;
-    const passing = data.filter((c: any) => c.status === "passing").length;
-    const in_review = data.filter((c: any) => c.status === "in_review").length;
-    const not_started = data.filter((c: any) => c.status === "not_started").length;
+    const statuses = data as Array<{ status: ControlStatus }>;
+    const total = statuses.length;
+    const passing = statuses.filter((control) => control.status === "passing").length;
+    const in_review = statuses.filter((control) => control.status === "in_review").length;
+    const not_started = statuses.filter(
+      (control) => control.status === "not_started"
+    ).length;
     const percentage = total > 0 ? Math.round((passing / total) * 100) : 0;
 
     return { total, passing, in_review, not_started, percentage, hasData: true };
@@ -38,15 +42,18 @@ export default async function HomePage() {
     <div className="flex min-h-screen flex-col">
       {/* Header */}
       <header className="border-b border-neutral-200">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6">
           <div className="flex items-center gap-2">
             <ShieldCheck className="h-6 w-6 text-neutral-900" />
-            <span className="text-lg font-bold">SOC2 Dashboard</span>
+            <span className="text-lg font-bold">
+              <span className="sm:hidden">SOC2</span>
+              <span className="hidden sm:inline">SOC2 Dashboard</span>
+            </span>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 sm:gap-4">
             <Link
               href="https://github.com/Stevekaplanai/soc2-dashboard"
-              className="flex items-center gap-1.5 text-sm text-neutral-600 hover:text-neutral-900"
+              className="hidden items-center gap-1.5 text-sm text-neutral-600 hover:text-neutral-900 sm:flex"
             >
               <Github className="h-4 w-4" />
               GitHub

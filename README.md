@@ -8,7 +8,7 @@
 
 SOC2 compliance is 3 tables in a trench coat:
 
-1. **controls** — Seeded SOC2 Trust Services Criteria (69 controls across 5 categories)
+1. **controls** — Seeded SOC2 Trust Services Criteria (71 controls across 5 categories)
 2. **evidence** — Files uploaded as proof, linked to controls, with AI proposals and human review
 3. **control_status** — A Postgres VIEW that computes which controls are passing/in-review/not-started
 
@@ -45,8 +45,8 @@ npm install
 1. Go to [supabase.com](https://supabase.com) and create a new project (free tier is fine)
 2. Go to **SQL Editor**
 3. Paste the migration file from `/supabase/migrations/0001_soc2_dashboard.sql` — run it
-4. Paste the seed file from `/supabase/seed.sql` — run it (loads 69 SOC2 controls)
-5. Go to **Storage**, create a bucket called `evidence-files`, set it to **private**
+4. Paste the seed file from `/supabase/seed.sql` — run it (loads 71 SOC2 controls)
+5. The migration creates the private `evidence-files` bucket and its upload rules
 6. Copy your **Project URL** and **anon key** from Settings > API
 
 ### 3. Configure environment
@@ -75,8 +75,8 @@ Open [http://localhost:3000](http://localhost:3000)
 
 ```sql
 UPDATE auth.users
-SET raw_user_meta_data = raw_user_meta_data || '{"role": "admin"}'
-WHERE email = 'your@email.com';
+SET raw_app_meta_data = COALESCE(raw_app_meta_data, '{}'::jsonb) || '{"role": "admin"}'::jsonb
+WHERE email = 'steve@stevekaplan.ai';
 ```
 
 3. Log out and log back in — you now have access to `/dashboard/review`
@@ -121,11 +121,11 @@ soc2-dashboard/
 │   │   ├── claude.ts               # Claude AI evidence analysis
 │   │   ├── types.ts                # TypeScript types
 │   │   └── utils.ts                # cn() helper
-│   └── middleware.ts              # Supabase session refresh middleware
+│   └── proxy.ts                   # Session refresh + dashboard access gate
 ├── supabase/
 │   ├── migrations/
 │   │   └── 0001_soc2_dashboard.sql # Tables, view, RLS, storage bucket
-│   └── seed.sql                    # 69 SOC2 Trust Services Criteria controls
+│   └── seed.sql                    # 71 SOC2 Trust Services Criteria controls
 ├── package.json
 ├── next.config.ts
 ├── tsconfig.json
@@ -134,7 +134,7 @@ soc2-dashboard/
 
 ## Database Schema
 
-### `soc2_controls`
+### `controls`
 | Column | Type | Description |
 |--------|------|-------------|
 | id | UUID PK | Auto-generated |
@@ -144,11 +144,11 @@ soc2-dashboard/
 | description | TEXT | What the control requires |
 | status | TEXT | not_started / in_review / passing (computed) |
 
-### `soc2_evidence`
+### `evidence`
 | Column | Type | Description |
 |--------|------|-------------|
 | id | UUID PK | Auto-generated |
-| control_id | UUID FK | → soc2_controls |
+| control_id | UUID FK | → controls |
 | file_url | TEXT | Supabase Storage path |
 | file_name | TEXT | Original filename |
 | uploaded_by | UUID FK | → auth.users |
@@ -160,39 +160,41 @@ soc2-dashboard/
 | reviewed_at | TIMESTAMPTZ | When reviewed |
 | notes | TEXT | Reviewer notes |
 
-**Check constraint:** `review_status = 'accepted'` requires `reviewed_by IS NOT NULL`. The database enforces the human review gate even if application code misbehaves.
+**Check constraint:** `review_status = 'accepted'` requires both `reviewed_by` and `reviewed_at`. The database enforces the human review gate even if application code misbehaves.
 
-### `soc2_control_status` (VIEW)
+### `control_status` (VIEW)
 Computed view — not a table. Returns `control_id, code, title, category, status, evidence_count, last_evidence_at`. The dashboard reads this view. Always current.
 
-### `soc2_audit_log`
+### `audit_log`
 | Column | Type | Description |
 |--------|------|-------------|
 | id | UUID PK | Auto-generated |
-| action | TEXT | uploaded / accepted / rejected |
-| evidence_id | UUID FK | → soc2_evidence |
-| control_id | UUID FK | → soc2_controls |
+| action | TEXT | uploaded / accepted / rejected / requested_more_info |
+| evidence_id | UUID FK | → evidence |
+| control_id | UUID FK | → controls |
 | performed_by | UUID FK | → auth.users |
 | performed_at | TIMESTAMPTZ | When action occurred |
 | note | TEXT | Optional note |
 
 ## RLS Policies
 
-- **soc2_controls**: Readable by any authenticated user
-- **soc2_control_status** (view): Readable by authenticated users
-- **soc2_evidence**: Users see only their own uploads; admins see all
-- **soc2_audit_log**: Readable by admins only; insert by authenticated
+- **controls**: Readable by any authenticated user; not user-editable
+- **control_status** (view): Readable by authenticated users and obeys the underlying RLS rules
+- **evidence**: Users see only their own uploads; admins see all; review changes go through the admin-only database function
+- **audit_log**: Readable by admins and written by trusted server/review paths only
 - **Storage (evidence-files)**: Users upload to their own folder; admins see all
 
 ## The AI Feature (Lesson 5)
 
 When evidence is uploaded, Claude analyzes it:
 1. File uploaded to Supabase Storage (private bucket, signed URLs)
-2. Server action generates a 30-second signed URL
+2. Server action generates a short-lived signed URL
 3. Claude receives the file + the full SOC2 controls list as context
 4. Returns JSON: `[{control_code, control_title, confidence, reasoning}]`
 5. Results stored in `evidence.ai_proposed_controls` and `evidence.ai_confidence`
 6. Admin sees the proposal in the review queue with color-coded confidence
+
+The app uses `claude-sonnet-4-6`. DOCX files are converted to text with Mammoth before analysis; PDF and image files are sent as native document/image inputs.
 
 **Supported file types:** PDF (native), PNG/JPG (native), DOCX (text extraction)
 

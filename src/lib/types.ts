@@ -21,6 +21,7 @@ export interface ControlStatusRow {
   status: ControlStatus;
   evidence_count: number;
   last_evidence_at: string | null;
+  description: string;
 }
 
 export interface Evidence {
@@ -51,7 +52,7 @@ export interface AiProposedControl {
 
 export interface AuditLog {
   id: string;
-  action: "accepted" | "rejected" | "uploaded";
+  action: "accepted" | "rejected" | "requested_more_info" | "uploaded";
   evidence_id: string;
   control_id: string;
   performed_by: string;

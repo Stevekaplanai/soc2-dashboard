@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { X } from "lucide-react";
@@ -14,12 +14,6 @@ interface SheetProps {
 }
 
 export function Sheet({ open, onClose, title, description, children }: SheetProps) {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
   useEffect(() => {
     if (open) {
       document.body.style.overflow = "hidden";
@@ -33,29 +27,32 @@ export function Sheet({ open, onClose, title, description, children }: SheetProp
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (open && e.key === "Escape") onClose();
     };
     document.addEventListener("keydown", handleEscape);
     return () => document.removeEventListener("keydown", handleEscape);
-  }, [onClose]);
+  }, [onClose, open]);
 
-  if (!mounted) return null;
+  if (!open) return null;
 
   return (
-    <div className={cn("fixed inset-0 z-50", open ? "pointer-events-auto" : "pointer-events-none")}>
+    <div className="fixed inset-0 z-50">
       {/* Backdrop */}
       <div
         className={cn(
           "fixed inset-0 bg-black/50 transition-opacity duration-300",
-          open ? "opacity-100" : "opacity-0"
+          "opacity-100"
         )}
         onClick={onClose}
       />
       {/* Panel */}
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title ?? "Dialog"}
         className={cn(
           "fixed right-0 top-0 h-full w-full max-w-md bg-white shadow-xl transition-transform duration-300 ease-in-out overflow-y-auto",
-          open ? "translate-x-0" : "translate-x-full"
+          "translate-x-0"
         )}
       >
         <div className="flex items-center justify-between border-b border-neutral-200 p-4">
@@ -63,7 +60,13 @@ export function Sheet({ open, onClose, title, description, children }: SheetProp
             {title && <h2 className="text-lg font-semibold text-neutral-900">{title}</h2>}
             {description && <p className="mt-1 text-sm text-neutral-500">{description}</p>}
           </div>
-          <Button variant="ghost" size="icon" onClick={onClose} className="shrink-0">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onClose}
+            className="shrink-0"
+            aria-label="Close panel"
+          >
             <X className="h-4 w-4" />
           </Button>
         </div>

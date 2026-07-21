@@ -1,62 +1,67 @@
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
+import { ArrowLeft, ShieldCheck } from "lucide-react";
 import { ReviewQueueClient } from "@/components/review-queue-client";
 import { Card, CardContent } from "@/components/ui/card";
-import { ShieldCheck, ArrowLeft } from "lucide-react";
-import { redirect } from "next/navigation";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+import type { AiProposedControl, Evidence } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
+type PendingEvidenceRow = Omit<
+  Evidence,
+  "control_code" | "control_title" | "uploader_email"
+> & {
+  control: Array<{ code: string; title: string }>;
+};
+
 async function getPendingEvidence() {
   const supabase = await createClient();
-  if (!supabase) return { evidence: [], isAdmin: false };
+  if (!supabase) return { evidence: [] as Evidence[], isAdmin: false };
 
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  if (!user) redirect("/auth/login?redirect=/dashboard/review");
 
-  if (!user) {
-    redirect("/auth/login?redirect=/dashboard/review");
+  if (user.app_metadata?.role !== "admin") {
+    return { evidence: [] as Evidence[], isAdmin: false };
   }
 
-  const userRole = user.app_metadata?.role || user.user_metadata?.role;
-  const isAdmin = userRole === "admin";
+  const adminClient = createAdminClient();
+  if (!adminClient) throw new Error("The Supabase service role key is missing.");
 
-  if (!isAdmin) {
-    return { evidence: [], isAdmin: false };
-  }
-
-  // Fetch pending evidence with control info
-  const { data: evidence } = await supabase
+  const { data, error } = await adminClient
     .from("evidence")
     .select(
-      `
-      id,
-      control_id,
-      file_url,
-      file_name,
-      uploaded_by,
-      uploaded_at,
-      ai_proposed_controls,
-      ai_confidence,
-      review_status,
-      notes,
-      control:controls(code, title),
-      uploader:auth.users!evidence_uploaded_by_fkey(email)
-    `
+      "id, control_id, file_url, file_name, uploaded_by, uploaded_at, ai_proposed_controls, ai_confidence, review_status, reviewed_by, reviewed_at, notes, control:controls(code, title)"
     )
     .eq("review_status", "pending")
     .order("uploaded_at", { ascending: true });
+  if (error) throw new Error(`Unable to load the review queue: ${error.message}`);
 
-  // Flatten the joined data
-  const flatEvidence = (evidence || []).map((e: any) => ({
-    ...e,
-    control_code: e.control?.code,
-    control_title: e.control?.title,
-    uploader_email: e.uploader?.email,
-  }));
+  const rows = (data ?? []) as unknown as PendingEvidenceRow[];
+  const uploaderIds = [...new Set(rows.map((row) => row.uploaded_by))];
+  const uploaderEntries = await Promise.all(
+    uploaderIds.map(async (id) => {
+      const { data: uploader } = await adminClient.auth.admin.getUserById(id);
+      return [id, uploader.user?.email] as const;
+    })
+  );
+  const uploaderEmails = new Map(uploaderEntries);
 
-  return { evidence: flatEvidence, isAdmin: true };
+  const evidence = rows.map(
+    ({ control: controlRows, ai_proposed_controls, ...row }): Evidence => ({
+      ...row,
+      ai_proposed_controls: ai_proposed_controls as AiProposedControl[] | null,
+      control_code: controlRows[0]?.code,
+      control_title: controlRows[0]?.title,
+      uploader_email: uploaderEmails.get(row.uploaded_by),
+    })
+  );
+
+  return { evidence, isAdmin: true };
 }
 
 export default async function ReviewPage() {
@@ -65,7 +70,7 @@ export default async function ReviewPage() {
   return (
     <div className="min-h-screen bg-neutral-50">
       <header className="border-b border-neutral-200 bg-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
           <div className="flex items-center gap-4">
             <Link
               href="/dashboard"
@@ -81,38 +86,32 @@ export default async function ReviewPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-4xl px-6 py-8">
+      <main className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold text-neutral-900">Evidence Review Queue</h1>
+          <h1 className="text-2xl font-bold text-neutral-900">
+            Evidence Review Queue
+          </h1>
           <p className="mt-1 text-sm text-neutral-500">
-            Review uploaded evidence, check Claude's AI proposals, and accept or reject.
+            Verify each file and Claude proposal before accepting evidence.
           </p>
         </div>
 
         {!isAdmin ? (
           <Card>
             <CardContent className="py-12 text-center">
-              <p className="text-neutral-500">
-                Admin access required. Set the{" "}
-                <code className="rounded bg-neutral-100 px-1.5 py-0.5 text-sm">
-                  admin
-                </code>{" "}
-                role in your user metadata to access this page.
-              </p>
-              <p className="mt-2 text-xs text-neutral-400">
-                Run in Supabase SQL editor:
-                <code className="mt-1 block rounded bg-neutral-100 p-2 text-xs">
-                  UPDATE auth.users SET raw_user_meta_data = raw_user_meta_data ||
-                  '{"{"}"role":"admin"{"}"}' WHERE email = 'your@email.com';
-                </code>
+              <p className="font-medium text-neutral-700">Admin access required</p>
+              <p className="mt-2 text-sm text-neutral-500">
+                Ask your Supabase administrator to add the admin role to your app
+                metadata.
               </p>
             </CardContent>
           </Card>
         ) : evidence.length === 0 ? (
           <Card>
             <CardContent className="py-12 text-center">
-              <p className="text-neutral-500">
-                No pending evidence. All caught up! 🎉
+              <p className="font-medium text-neutral-700">Review queue cleared</p>
+              <p className="mt-2 text-sm text-neutral-500">
+                New evidence will appear here after upload.
               </p>
             </CardContent>
           </Card>
